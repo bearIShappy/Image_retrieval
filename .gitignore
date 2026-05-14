@@ -1,0 +1,11 @@
+venv/
+pycache/
+.qdrant-initialized
+outputs/
+snapshots/
+cleaned_dataset/    
+dataset/  
+test_dataset/
+finetuned_clip.pt
+qdrant_data/
+embeddings.pkl

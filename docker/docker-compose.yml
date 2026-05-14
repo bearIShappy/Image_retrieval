@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # ── Qdrant vector database ────────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.9.2       # pin version for reproducibility
+    container_name: qdrant
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"   # REST API  → localhost:6333
+      - "6334:6334"                   # gRPC port (optional)
+    volumes:
+      - ../qdrant_data:/qdrant/storage:z
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || curl -sf http://localhost:6333/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── CLIP retrieval API ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: clip_backend
+    ports:
+      - "${API_PORT:-5000}:5000"
+    volumes:
+      - ..:/app                       # live-reload source code
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    env_file:
+      - .env                          # docker/.env (service hostnames)
+    environment:
+      - QDRANT_HOST=${QDRANT_HOST:-qdrant}
+      - QDRANT_PORT=${QDRANT_PORT:-6333}
+    restart: unless-stopped
