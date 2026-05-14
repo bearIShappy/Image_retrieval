@@ -37,15 +37,15 @@ interface PendingUpload {
 type TrainStatus = 'idle' | 'training' | 'success' | 'error';
 
 export function FewShotManagementPage() {
-  const [classCounts, setClassCounts]       = useState<Record<string, number>>({});
+  const [classCounts, setClassCounts] = useState<Record<string, number>>({});
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
-  const [staged, setStaged]                 = useState<PendingFile[]>([]);
-  const [isUploading, setIsUploading]       = useState(false);
-  const [uploadError, setUploadError]       = useState<string | null>(null);
-  const [trainStatus, setTrainStatus]       = useState<TrainStatus>('idle');
-  const [trainProgress, setTrainProgress]   = useState('');
-  const [trainMessage, setTrainMessage]     = useState('');
-  const [activeModel, setActiveModel]       = useState('');
+  const [staged, setStaged] = useState<PendingFile[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [trainStatus, setTrainStatus] = useState<TrainStatus>('idle');
+  const [trainProgress, setTrainProgress] = useState('');
+  const [trainMessage, setTrainMessage] = useState('');
+  const [activeModel, setActiveModel] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadData(); }, []);
@@ -94,14 +94,14 @@ export function FewShotManagementPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const assignClass  = (idx: number, cls: string) =>
+  const assignClass = (idx: number, cls: string) =>
     setStaged(prev => prev.map((f, i) => i === idx ? { ...f, assignedClass: cls } : f));
-  const assignAll    = (cls: string) =>
+  const assignAll = (cls: string) =>
     setStaged(prev => prev.map(f => ({ ...f, assignedClass: cls })));
   const removeStaged = (idx: number) => {
     setStaged(prev => { URL.revokeObjectURL(prev[idx].preview); return prev.filter((_, i) => i !== idx); });
   };
-  const clearStaged  = () => {
+  const clearStaged = () => {
     staged.forEach(f => URL.revokeObjectURL(f.preview));
     setStaged([]); setUploadError(null);
   };
@@ -118,38 +118,38 @@ export function FewShotManagementPage() {
       const formData = new FormData();
       staged.forEach(f => formData.append('files', f.file));
       staged.forEach(f => formData.append('classes', f.assignedClass));
-      const res  = await fetch(`${BASE}/api/upload-support`, { method: 'POST', body: formData });
+      const res = await fetch(`${BASE}/api/upload-support`, { method: 'POST', body: formData });
       const json = await res.json();
-      if (!res.ok || json.status === 'error') { 
-        setUploadError(json.message ?? 'Upload failed'); 
-        return; 
+      if (!res.ok || json.status === 'error') {
+        setUploadError(json.message ?? 'Upload failed');
+        return;
       }
-      
+
       clearStaged(); // This clears staged files AND resets uploadError to null
       await loadData();
-      
+
       if (json.status === 'partial') {
         // Set it AFTER clearStaged so it doesn't get erased
         setUploadError(`Some files failed: ${json.failed_details.map((f: any) => f.filename + ' (' + f.reason + ')').join(', ')}`);
       }
-    } catch { 
-      setUploadError('Network error during upload.'); 
+    } catch {
+      setUploadError('Network error during upload.');
     }
-    finally { 
-      setIsUploading(false); 
+    finally {
+      setIsUploading(false);
     }
   };
 
   const handleTrain = async () => {
     setTrainStatus('training'); setTrainProgress('Starting...'); setTrainMessage('');
     try {
-      const res  = await fetch(`${BASE}/api/finetune`, { method: 'POST' });
+      const res = await fetch(`${BASE}/api/finetune`, { method: 'POST' });
       const json = await res.json();
       if (json.status === 'error') { setTrainStatus('error'); setTrainMessage(json.message); return; }
       const poll = async () => {
         try {
           const sr = await fetch(`${BASE}/api/finetune/status`);
-          const s  = await sr.json();
+          const s = await sr.json();
           setTrainProgress(s.progress ?? '');
           if (s.status === 'running') { setTimeout(poll, 2000); }
           else if (s.status === 'success') {
@@ -163,7 +163,16 @@ export function FewShotManagementPage() {
     } catch { setTrainStatus('error'); setTrainMessage('Failed to start training.'); }
   };
 
-  const allAssigned     = staged.length > 0 && staged.every(f => f.assignedClass);
+  const handleCancel = async () => {
+    if (!confirm('Are you sure you want to cancel the training?')) return;
+    try {
+      await fetch(`${BASE}/api/finetune/cancel`, { method: 'POST' });
+    } catch (err) {
+      console.error('Failed to cancel', err);
+    }
+  };
+
+  const allAssigned = staged.length > 0 && staged.every(f => f.assignedClass);
   const unassignedCount = staged.filter(f => !f.assignedClass).length;
   const pendingByClass: Record<string, number> = {};
   pendingUploads.forEach(p => { pendingByClass[p.class_name] = (pendingByClass[p.class_name] ?? 0) + 1; });
@@ -275,7 +284,7 @@ export function FewShotManagementPage() {
               <div className="text-sm text-text-secondary">
                 <span className="text-white font-medium">{staged.length}</span> staged
                 {unassignedCount > 0 && <span className="text-red-400 ml-2">· {unassignedCount} unassigned</span>}
-                {allAssigned      && <span className="text-green-400 ml-2">· all assigned ✓</span>}
+                {allAssigned && <span className="text-green-400 ml-2">· all assigned ✓</span>}
               </div>
               <button onClick={handleUpload} disabled={isUploading || !allAssigned}
                 className={twMerge(clsx(
@@ -309,15 +318,15 @@ export function FewShotManagementPage() {
           </div>
           <div className={twMerge(clsx(
             "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all",
-            trainStatus === 'idle'     && "bg-surface text-text-tertiary border-border",
+            trainStatus === 'idle' && "bg-surface text-text-tertiary border-border",
             trainStatus === 'training' && "bg-orange-500/10 text-orange-400 border-orange-500/30",
-            trainStatus === 'success'  && "bg-green-500/10 text-green-400 border-green-500/30",
-            trainStatus === 'error'    && "bg-red-500/10 text-red-400 border-red-500/30",
+            trainStatus === 'success' && "bg-green-500/10 text-green-400 border-green-500/30",
+            trainStatus === 'error' && "bg-red-500/10 text-red-400 border-red-500/30",
           ))}>
-            {trainStatus === 'idle'     && "Status: Idle"}
+            {trainStatus === 'idle' && "Status: Idle"}
             {trainStatus === 'training' && <><RefreshCw className="w-4 h-4 animate-spin" /> Training...</>}
-            {trainStatus === 'success'  && <><CheckCircle2 className="w-4 h-4" /> Done ✓</>}
-            {trainStatus === 'error'    && <><AlertCircle className="w-4 h-4" /> Error</>}
+            {trainStatus === 'success' && <><CheckCircle2 className="w-4 h-4" /> Done ✓</>}
+            {trainStatus === 'error' && <><AlertCircle className="w-4 h-4" /> Error</>}
           </div>
         </div>
 
@@ -327,13 +336,26 @@ export function FewShotManagementPage() {
             <span>Add at least 20 new support images to enable fine-tuning. Currently have {pendingUploads.length}.</span>
           </div>
         )}
-        <button onClick={handleTrain} disabled={trainStatus === 'training' || pendingUploads.length < 20}
-          className="flex items-center justify-center gap-2 px-8 py-4 rounded-xl border border-orange-500/30 bg-orange-600/20 hover:bg-orange-600/30 transition-all disabled:opacity-50 self-start">
-          {trainStatus === 'training'
-            ? <RefreshCw className="w-5 h-5 text-orange-400 animate-spin" />
-            : <Wand2 className="w-5 h-5 text-orange-400" />}
-          <span className="font-semibold text-white text-lg">Train & Build Index</span>
-        </button>
+        <div className="flex items-center gap-3 mt-2">
+          <button onClick={handleTrain} disabled={trainStatus === 'training' || pendingUploads.length < 20}
+            className="flex items-center justify-center gap-2 px-8 py-4 rounded-xl border border-orange-500/30 bg-orange-600/20 hover:bg-orange-600/30 transition-all disabled:opacity-50">
+            {trainStatus === 'training'
+              ? <RefreshCw className="w-5 h-5 text-orange-400 animate-spin" />
+              : <Wand2 className="w-5 h-5 text-orange-400" />}
+            <span className="font-semibold text-white text-lg">Train & Build Index</span>
+          </button>
+          
+          <button onClick={handleCancel} disabled={trainStatus !== 'training'}
+            className={twMerge(clsx(
+              "flex items-center justify-center gap-2 px-6 py-4 rounded-xl border transition-all",
+              trainStatus === 'training'
+                ? "border-red-500/30 bg-red-600/20 hover:bg-red-600/30 text-red-400"
+                : "border-border bg-surface text-text-tertiary cursor-not-allowed opacity-50"
+            ))}>
+            <X className="w-5 h-5" />
+            <span className="font-semibold text-lg">Cancel</span>
+          </button>
+        </div>
 
         {activeModel && (
           <div className="mt-2 text-sm text-text-tertiary">
@@ -355,7 +377,7 @@ export function FewShotManagementPage() {
             </div>
           )}
           {trainStatus === 'success' && <div className="text-green-400 mt-2">&gt; ✓ {trainMessage}</div>}
-          {trainStatus === 'error'   && <div className="text-red-400 mt-2">&gt; ✗ {trainMessage}</div>}
+          {trainStatus === 'error' && <div className="text-red-400 mt-2">&gt; ✗ {trainMessage}</div>}
         </div>
       </div>
     </div>

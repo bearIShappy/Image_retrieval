@@ -282,7 +282,7 @@ async def get_dataset():
             images = []
             images_detail = []
             for img_name in sorted(os.listdir(cls_path)):
-                if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.avif', '.bmp', '.tiff')):
                     continue
                 abs_path = os.path.normpath(os.path.join(cls_path, img_name))
                 url = f"/cleaned_dataset/{cls_name}/{img_name}"
@@ -307,7 +307,7 @@ async def get_dataset():
     test_detail = []
     if os.path.exists(test_dir):
         for img_name in sorted(os.listdir(test_dir)):
-            if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+            if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.avif', '.bmp', '.tiff')):
                 continue
             url = f"/test_dataset/{img_name}"
             abs_path = os.path.normpath(os.path.join(test_dir, img_name))
@@ -316,13 +316,14 @@ async def get_dataset():
                 "url": url,
                 "filename": img_name,
                 "indexed": abs_path in indexed_paths,
+                "path": abs_path,
             })
     main_images = []
     main_detail = []
     main_dir = os.path.join(PROJECT_ROOT, "dataset")
     if os.path.exists(main_dir):
         for img_name in sorted(os.listdir(main_dir)):
-            if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+            if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.avif', '.bmp', '.tiff')):
                 continue
             url = f"/dataset/{img_name}"
             abs_path = os.path.normpath(os.path.join(main_dir, img_name))
@@ -352,6 +353,18 @@ async def get_dataset():
         }
     }
 
+
+def get_unique_filepath(directory: str, filename: str) -> tuple[str, str]:
+    """Returns (absolute_path, unique_filename) ensuring no overwrite."""
+    base, ext = os.path.splitext(filename)
+    unique_name = filename
+    path = os.path.join(directory, unique_name)
+    counter = 1
+    while os.path.exists(path):
+        unique_name = f"{base}_{counter}{ext}"
+        path = os.path.join(directory, unique_name)
+        counter += 1
+    return path, unique_name
 
 @app.post("/api/upload-support")
 async def upload_support(
@@ -399,16 +412,9 @@ async def upload_support(
         # Create class directory if it doesn't exist
         class_dir = os.path.join(support_dir, class_name)
         os.makedirs(class_dir, exist_ok=True)
-        file_path = os.path.join(class_dir, img.filename)
-
-        # Check for duplicates
-        if os.path.exists(file_path):
-            failed.append({
-                "filename": img.filename,
-                "class": class_name,
-                "reason": "File already exists in this class"
-            })
-            continue
+        
+        # Ensure unique filename
+        file_path, img.filename = get_unique_filepath(class_dir, img.filename)
         
         try:
             # Save permanently to class folder
@@ -497,7 +503,7 @@ async def get_pending_uploads():
                 "id": img["id"],
                 "filename": img["filename"],
                 "path": img["path"],
-                "class": img["class"],
+                "class_name": img["class"],
                 "created_at": img["created_at"],
             })
     
@@ -596,7 +602,8 @@ async def upload_main(images: list[UploadFile] = File(...)):
     filenames_map = {}
     upload_dates_map = {}
     for img in images:
-        path = os.path.join(test_dir, img.filename)
+        path, unique_filename = get_unique_filepath(test_dir, img.filename)
+        img.filename = unique_filename
         with open(path, "wb") as f:
             f.write(await img.read())
         saved_paths.append(path)
@@ -624,7 +631,8 @@ async def upload_test(images: list[UploadFile] = File(...)):
     filenames_map = {}
     upload_dates_map = {}
     for img in images:
-        path = os.path.join(test_dir, img.filename)
+        path, unique_filename = get_unique_filepath(test_dir, img.filename)
+        img.filename = unique_filename
         with open(path, "wb") as f:
             f.write(await img.read())
         saved_paths.append(path)
@@ -722,6 +730,15 @@ async def finetune_status():
     """Poll training progress."""
     return _training_state
 
+@app.post("/api/finetune/cancel")
+async def finetune_cancel():
+    """Request cancellation of an ongoing training job."""
+    global _training_state
+    if _training_state.get("status") == "running":
+        _training_state["cancel_requested"] = True
+        return {"status": "success", "message": "Cancellation requested."}
+    return {"status": "error", "message": "No training is currently running."}
+
 
 @app.post("/api/finetune")
 async def finetune_model():
@@ -731,10 +748,10 @@ async def finetune_model():
     """
     global _training_state
 
-    if _training_state["status"] == "running":
+    if _training_state.get("status") == "running":
         return {"status": "already_running", "message": "Training already in progress"}
 
-    _training_state.update({"status": "running", "message": "Starting...", "progress": "", "result": None})
+    _training_state.update({"status": "running", "message": "Starting...", "progress": "", "result": None, "cancel_requested": False})
 
     def _run():
         global prototypes, clip, vector_store, metadata_db, index, _training_state
@@ -806,8 +823,18 @@ def _do_finetune():
                 batch_size=8,
                 lr_backbone=1e-5,
                 lr_head=1e-3,
-                save_path=next_model_path
+                save_path=next_model_path,
+                cancel_check=lambda: _training_state.get("cancel_requested", False)
             )
+            if _training_state.get("cancel_requested", False):
+                _training_state.update({"status": "error", "message": "Training cancelled by user."})
+                # Revert pending records so they can be trained later
+                for pending_img in pending_images:
+                    metadata_db._execute("UPDATE pending_support_images SET processed_at = NULL WHERE path = ?", (pending_img["path"],))
+                metadata_db.conn.commit()
+                print("[finetune] Cancellation acknowledged. Reverted pending status.")
+                return
+            
             print(f"[finetune] Successfully saved new model: {next_model_path}")
         except Exception as e:
             print(f"[finetune] Training error: {e}")

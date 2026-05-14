@@ -9,3 +9,7 @@ test_dataset/
 finetuned_clip.pt
 qdrant_data/
 embeddings.pkl
+__pycache__/
+*.pyc
+*.db
+scratch/

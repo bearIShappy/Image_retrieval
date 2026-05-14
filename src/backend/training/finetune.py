@@ -24,7 +24,7 @@ from src.backend.retrieval.clip_model import CLIPEncoder
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff", ".avif"}
 
 # CLIP ViT-B/32 normalization (from preprocessor_config.json)
 CLIP_MEAN = (0.48145466, 0.4578275, 0.40821073)
